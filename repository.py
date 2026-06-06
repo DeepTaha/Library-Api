@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 import models
 
 class BookRepository:
@@ -50,4 +51,21 @@ class BorrowingRepository:
 
     async def get_by_id(self, borrowing_id: int) -> models.Borrowing | None:
         result = await self.db.execute(select(models.Borrowing).where(models.Borrowing.id == borrowing_id))
+        return result.scalar_one_or_none()
+    
+    async def count_active_by_user(self, user_name: str) -> int:
+        result = await self.db.execute(
+        select(func.count(models.Borrowing.id))
+        .where(models.Borrowing.user_name == user_name)
+        .where(models.Borrowing.returned_at.is_(None))
+    )
+        return result.scalar_one()
+
+    async def find_active_by_user_and_book(self, user_name: str, book_id: int) -> models.Borrowing | None:
+        result = await self.db.execute(
+        select(models.Borrowing)
+        .where(models.Borrowing.user_name == user_name)
+        .where(models.Borrowing.book_id == book_id)
+        .where(models.Borrowing.returned_at.is_(None))
+    )
         return result.scalar_one_or_none()

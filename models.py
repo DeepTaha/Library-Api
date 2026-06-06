@@ -15,6 +15,7 @@ class Book(Base):
     author = Column(String, nullable=False)
     total_copies = Column(Integer, nullable=False, default=0)
     available_copies = Column(Integer, nullable=False, default=0)
+    genre=Column(String(100), nullable= True)
 
     borrowings = relationship("Borrowing", back_populates="book")
 

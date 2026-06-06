@@ -10,3 +10,11 @@ class BorrowingNotFound(Exception):
     """Raised when a borrowing lookup by id returns nothing."""
 
     pass
+
+class BorrowLimitExceeded(Exception):
+    """Raised when user tries to have more than three active borrowings."""
+    pass 
+
+class DuplicateActiveBorrowing(Exception):
+    """Raised when user haven't returned the book and tries to borrow the same book."""
+    pass

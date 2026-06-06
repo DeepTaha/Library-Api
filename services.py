@@ -1,9 +1,9 @@
-from exceptions import BookNotFound, BookNotAvailable, BorrowingNotFound
+from exceptions import BookNotFound, BookNotAvailable, BorrowingNotFound, BorrowLimitExceeded, DuplicateActiveBorrowing
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from repository import BookRepository, BorrowingRepository
 import schemas
-
+MAX_ACTIVE_BORROWINGS_PER_USER = 3
 class LibraryService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -21,35 +21,28 @@ class LibraryService:
 
     async def borrow_book(self, request: schemas.BorrowRequest):
         book = await self.book_repo.get_by_id_locked(request.book_id)
-        
-        # Business logic validation
+    
         if not book:
             raise BookNotFound()
         if book.available_copies < 1:
             raise BookNotAvailable()
-
-        # Mutate models
+    
+        # New rule 1: max 3 active borrowings per user
+        active_count = await self.borrow_repo.count_active_by_user(request.user_name)
+        if active_count >= MAX_ACTIVE_BORROWINGS_PER_USER:
+            raise BorrowLimitExceeded()
+    
+        # New rule 2: no duplicate active borrowing of the same book
+        existing = await self.borrow_repo.find_active_by_user_and_book(
+            request.user_name, request.book_id
+    )
+        if existing is not None:
+            raise DuplicateActiveBorrowing()
+    
+    # All rules passed — do the work
         book.available_copies -= 1
         borrowing = await self.borrow_repo.create(request.book_id, request.user_name)
-        
-        await self.db.commit()
-        await self.db.refresh(borrowing)
-        return borrowing
-
-    async def return_book(self, borrowing_id: int):
-        borrowing = await self.borrow_repo.get_by_id(borrowing_id)
-        # print(f"borrowing: id={borrowing.id}, book_id={borrowing.book_id}, user_name={borrowing.user_name}, borrowed_at={borrowing.borrowed_at}, returned_at={borrowing.returned_at}")
-        # Business logic validation
-        if not borrowing:
-            raise BorrowingNotFound
-        if borrowing.returned_at is not None:
-            raise BookNotAvailable
-        # Mutate models
-        borrowing.returned_at = datetime.utcnow()
-        book = await self.book_repo.get_by_id(borrowing.book_id)
-        if book:
-            book.available_copies += 1
-
+    
         await self.db.commit()
         await self.db.refresh(borrowing)
         return borrowing
