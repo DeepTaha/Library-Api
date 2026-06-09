@@ -2,6 +2,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
 import models
+from datetime import datetime, timedelta
+from sqlalchemy.orm import selectinload
+
 
 class BookRepository:
     def __init__(self, db: AsyncSession):
@@ -45,7 +48,11 @@ class BorrowingRepository:
         self.db = db
 
     async def create(self, book_id: int, user_name: str) -> models.Borrowing:
-        borrowing = models.Borrowing(book_id=book_id, user_name=user_name)
+        now= datetime.utcnow()
+        borrowing = models.Borrowing(book_id=book_id,
+                                     user_name=user_name,
+                                     borrowed_at=now,
+                                     due_date= now + timedelta(days=14))
         self.db.add(borrowing)
         return borrowing
 
@@ -69,3 +76,13 @@ class BorrowingRepository:
         .where(models.Borrowing.returned_at.is_(None))
     )
         return result.scalar_one_or_none()
+    
+    async def find_overdue(self):
+        now = datetime.utcnow()
+        result = await self.db.execute(
+        select(models.Borrowing)
+        .options(selectinload(models.Borrowing.book))
+        .where(models.Borrowing.due_date < now)
+        .where(models.Borrowing.returned_at.is_(None))
+    )
+        return result.scalars().all()

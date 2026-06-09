@@ -12,7 +12,7 @@ class BookCreate(BookBase):
 
 class BookResponse(BookBase):
     id: int
-    class Config:
+    class ConfigDict:
         from_attributes = True
 
 class BorrowRequest(BaseModel):
@@ -25,5 +25,5 @@ class BorrowingResponse(BaseModel):
     user_name: str
     borrowed_at: datetime | None
     returned_at: datetime | None
-    class Config:
+    class ConfigDict:
         from_attributes = True

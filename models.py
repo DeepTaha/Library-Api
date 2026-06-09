@@ -28,6 +28,7 @@ class Borrowing(Base):
     book_id = Column(Integer, ForeignKey("books.id"), nullable=False)
     user_name = Column(String, nullable=False)
     borrowed_at = Column(DateTime(timezone=True), default=func.now()) 
+    due_date= Column(DateTime, nullable= False)
     returned_at = Column(DateTime(timezone=True), nullable=True)
 
     book = relationship("Book", back_populates="borrowings")

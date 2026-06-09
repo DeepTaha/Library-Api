@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 import database
 import models  # noqa: F401
 from database import engine
-from router import books, borrowings
+from router import books, borrowings, admin 
 from exceptions import BookNotFound, BookNotAvailable, BorrowingNotFound, BorrowLimitExceeded,DuplicateActiveBorrowing
 
 
@@ -52,3 +52,4 @@ async def handle_duplicate_borrow(request: Request, exc: DuplicateActiveBorrowin
 
 app.include_router(books.router)
 app.include_router(borrowings.router)
+app.include_router(admin.router)
