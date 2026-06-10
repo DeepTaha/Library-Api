@@ -12,9 +12,9 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import text
 
-from main import app
-from database import get_db
-import models  # noqa: F401
+from app.main import app
+from app.database import get_db
+from app import models  # noqa: F401
 
 
 @pytest_asyncio.fixture(loop_scope="function", autouse=True)

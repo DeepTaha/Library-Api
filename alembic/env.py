@@ -1,6 +1,6 @@
 from logging.config import fileConfig
-import database
-import models
+from app import database
+from app import models
 import sys
 import os
 

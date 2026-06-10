@@ -4,3 +4,10 @@ sqlalchemy[asyncio]
 asyncpg
 pydantic
 alembic
+passlib[bcrypt]
+bcrypt==4.0.1
+python-jose[cryptography]
+psycopg2-binary
+pytest
+pytest-asyncio
+httpx
