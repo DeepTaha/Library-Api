@@ -10,6 +10,7 @@ from app.exceptions import (
     UsernameAlreadyExists,
 )
 from app.models import User, UserRole
+from app.security import reset_tokens
 from app import schemas
 
 
@@ -20,24 +21,49 @@ class AuthService:
     
     async def create_user(self, user_data: schemas.UserCreate) -> User:
         """Create a new user. Used by admins."""
-        # Check if username is already taken
         existing = await self.user_repo.get_by_username(user_data.username)
         if existing is not None:
             raise UsernameAlreadyExists()
-        
-        # Hash the password before storing
-        hashed = hash_password(user_data.password)
-        
-        # Save the user
+
         user = await self.user_repo.create(
             username=user_data.username,
-            hashed_password=hashed,
+            hashed_password=hash_password(user_data.password),
             role=user_data.role,
+            email=user_data.email,
+            date_of_birth=user_data.date_of_birth,
         )
         await self.db.commit()
         await self.db.refresh(user)
         return user
     
+    async def register(self, username: str, password: str, email: str | None = None, date_of_birth=None) -> User:
+        """Public reader self-signup. Role is always READER."""
+        existing = await self.user_repo.get_by_username(username)
+        if existing is not None:
+            raise UsernameAlreadyExists()
+
+        user = await self.user_repo.create(
+            username=username,
+            hashed_password=hash_password(password),
+            role=UserRole.READER,
+            email=email,
+            date_of_birth=date_of_birth,
+        )
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def forgot_password(self, email: str) -> str | None:
+        """
+        Create a password-reset token for the user with this email.
+        Returns None silently when the email is not registered — callers
+        should always respond with the same message to prevent email enumeration.
+        """
+        user = await self.user_repo.get_by_email(email)
+        if user is None:
+            return None
+        return reset_tokens.create(user.id)
+
     async def authenticate(self, username: str, password: str) -> str:
         """
         Verify credentials and return a JWT if valid.
@@ -65,6 +91,37 @@ class AuthService:
     async def list_users(self, offset: int, limit: int):
         return await self.user_repo.list_all(offset, limit)
     
+    async def update_user(self, user_id: int, update_data: schemas.UserUpdate) -> User:
+        user = await self.user_repo.get_by_id(user_id)
+        if user is None:
+            raise UserNotFound()
+
+        if update_data.username is not None:
+            existing = await self.user_repo.get_by_username(update_data.username)
+            if existing is not None and existing.id != user_id:
+                raise UsernameAlreadyExists()
+            user.username = update_data.username
+
+        if update_data.role is not None:
+            user.role = update_data.role
+
+        if update_data.email is not None:
+            user.email = update_data.email
+
+        if update_data.date_of_birth is not None:
+            user.date_of_birth = update_data.date_of_birth
+
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def admin_reset_password(self, user_id: int, new_password: str) -> None:
+        user = await self.user_repo.get_by_id(user_id)
+        if user is None:
+            raise UserNotFound()
+        user.hashed_password = hash_password(new_password)
+        await self.db.commit()
+
     async def delete_user(self, user_id: int) -> None:
         user = await self.user_repo.get_by_id(user_id)
         if user is None:

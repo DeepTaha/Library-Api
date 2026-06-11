@@ -5,6 +5,8 @@ from app.exceptions.library import (
     BorrowLimitExceeded,
     DuplicateActiveBorrowing,
     BookAlreadyReturned,
+    AgeRestricted,
+    AccountSuspended,
 )
 from app.exceptions.auth import (
     InvalidCredentials,
@@ -20,4 +22,12 @@ __all__ = [
     "BorrowingNotFound",
     "BorrowLimitExceeded",
     "DuplicateActiveBorrowing",
+    "BookAlreadyReturned",
+    "AgeRestricted",
+    "AccountSuspended",
+    "InvalidCredentials",
+    "InvalidToken",
+    "InsufficientPermissions",
+    "UserNotFound",
+    "UsernameAlreadyExists",
 ]

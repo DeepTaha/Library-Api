@@ -7,15 +7,16 @@ from app.database import get_db
 from app.models import User, UserRole
 from app.repositories.user_repository import UserRepository
 from app.security.jwt import decode_access_token
+from app.security import token_blacklist
 from app.exceptions import InvalidToken, InsufficientPermissions, UserNotFound
 
 
 # This tells FastAPI: "Tokens come in the Authorization header as 'Bearer <token>'."
-# The tokenUrl="auth/login" is what powers Swagger's "Authorize" button — 
+# The tokenUrl="auth/login" is what powers Swagger's "Authorize" button —
 # clicking it sends you to that endpoint to get a token.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 
-# extracts and verify the token
+
 async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -24,26 +25,27 @@ async def get_current_user(
     Read the JWT from the request, verify it, load the user from the DB.
     This is the foundation of all authentication.
     """
-    # Decode and verify the JWT (raises InvalidToken if bad)
     payload = decode_access_token(token)
-    
-    # Extract the user id from the payload
+
+    # Reject tokens that have been explicitly invalidated via logout.
+    jti = payload.get("jti")
+    if jti and token_blacklist.contains(jti):
+        raise InvalidToken()
+
     user_id_str = payload.get("sub")
     if user_id_str is None:
         raise InvalidToken()
-    
+
     try:
         user_id = int(user_id_str)
     except ValueError:
         raise InvalidToken()
-    
-    # Look up the user in the database
+
     user_repo = UserRepository(db)
     user = await user_repo.get_by_id(user_id)
     if user is None:
-        # Token is valid but the user was deleted — treat as invalid.
         raise InvalidToken()
-    
+
     return user
 
 

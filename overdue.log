@@ -1,3 +1,10 @@
-[2026-06-07 15:25] OVERDUE: "The Hobbit" borrowed by Jon Doe — 3 days late
-[2026-06-07 15:25] OVERDUE: "Dune" borrowed by Alice — 7 days late
-[2026-06-07 15:25] OVERDUE: "1984" borrowed by Bob — 12 days late
+
+[2026-06-11 06:45] SUSPENDED: Taha — account put on hold (8 day(s) overdue on "The Hobbit")
+[2026-06-11 07:04] SUSPENDED: Owais — account put on hold (15 day(s) overdue on "Dune")
+[2026-06-11 07:04] SUSPENDED: Zaid — account put on hold (15 day(s) overdue on "1984")
+[2026-06-11 07:04] OVERDUE: "The Hobbit" borrowed by Taha — 15 day(s) late
+[2026-06-11 08:06] OVERDUE: "The Hobbit" borrowed by Taha — 15 day(s) late
+[2026-06-11 08:06] OVERDUE: "Dune" borrowed by Owais — 15 day(s) late
+[2026-06-11 08:06] OVERDUE: "1984" borrowed by Zaid — 15 day(s) late
+[2026-06-11 08:06] SUSPENDED: admin — account put on hold (15 day(s) overdue on "The Great Gatsby")
+[2026-06-11 08:06] SUSPENDED: Aamir — account put on hold (15 day(s) overdue on "American Psycho")

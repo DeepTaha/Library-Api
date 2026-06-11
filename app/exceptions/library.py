@@ -20,3 +20,11 @@ class DuplicateActiveBorrowing(Exception):
 
 class BookAlreadyReturned(Exception):
     pass
+
+
+class AgeRestricted(Exception):
+    pass
+
+
+class AccountSuspended(Exception):
+    pass

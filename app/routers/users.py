@@ -43,6 +43,42 @@ async def get_my_profile(
     return current_user
 
 
+@router.get("/{user_id}", response_model=schemas.UserResponse)
+async def get_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Get a single user by id. Admin only."""
+    service = AuthService(db)
+    return await service.get_user_by_id(user_id)
+
+
+@router.patch("/{user_id}", response_model=schemas.UserResponse)
+async def update_user(
+    user_id: int,
+    update_data: schemas.UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Update a user's username, role, or email. Admin only."""
+    service = AuthService(db)
+    return await service.update_user(user_id, update_data)
+
+
+@router.post("/{user_id}/reset-password", status_code=200)
+async def admin_reset_password(
+    user_id: int,
+    body: schemas.AdminResetPasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_admin),
+):
+    """Force a password reset for any user. Admin only."""
+    service = AuthService(db)
+    await service.admin_reset_password(user_id, body.new_password)
+    return {"message": "Password reset successfully"}
+
+
 @router.delete("/{user_id}", status_code=204)
 async def delete_user(
     user_id: int,

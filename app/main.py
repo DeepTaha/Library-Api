@@ -4,13 +4,15 @@ from fastapi.responses import JSONResponse
 
 from app import database, models
 from app.database import engine
-from app.routers import books, borrowings, admin, auth, users 
+from app.routers import analytics, books, borrowings, admin, auth, users
+from app.scheduler import start_scheduler, stop_scheduler
 from app.exceptions import (
     BookNotFound,
     BookNotAvailable,
     BorrowingNotFound,
     BorrowLimitExceeded,
     DuplicateActiveBorrowing,
+    AccountSuspended,
     InvalidCredentials,
     InvalidToken,
     InsufficientPermissions,
@@ -23,7 +25,9 @@ from app.exceptions import (
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(database.Base.metadata.create_all)
+    start_scheduler()
     yield
+    stop_scheduler()
 
 
 app = FastAPI(title="Library Book Borrowing System", lifespan=lifespan)
@@ -53,6 +57,11 @@ async def handle_borrow_limit(request: Request, exc: BorrowLimitExceeded):
 @app.exception_handler(DuplicateActiveBorrowing)
 async def handle_duplicate_borrow(request: Request, exc: DuplicateActiveBorrowing):
     return JSONResponse(status_code=400, content={"detail": "User has already borrowed this book and not returned it"})
+
+
+@app.exception_handler(AccountSuspended)
+async def handle_account_suspended(request: Request, exc: AccountSuspended):
+    return JSONResponse(status_code=403, content={"detail": "Your account is on hold due to overdue returns. Please return all overdue books to restore borrowing access."})
 
 
 # New auth handlers
@@ -85,8 +94,9 @@ async def handle_username_exists(request: Request, exc: UsernameAlreadyExists):
     return JSONResponse(status_code=400, content={"detail": "Username already taken"})
 
 
-app.include_router(auth.router)  
-app.include_router(users.router)        
+app.include_router(auth.router)
+app.include_router(users.router)
 app.include_router(books.router)
 app.include_router(borrowings.router)
 app.include_router(admin.router)
+app.include_router(analytics.router)

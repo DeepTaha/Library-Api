@@ -1,4 +1,5 @@
 """JWT creation and verification."""
+import uuid
 from datetime import datetime, timezone, timedelta
 from jose import jwt, JWTError
 
@@ -12,11 +13,12 @@ def create_access_token(user_id: int, role: str) -> str:
     The token expires after ACCESS_TOKEN_EXPIRE (set in config).
     """
     expire = datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRE
-    
+
     payload = {
-        "sub": str(user_id),   # "sub" = subject — the standard JWT field for "who this token is about"
+        "sub": str(user_id),       # "sub" = subject — the standard JWT field for "who this token is about"
         "role": role,
-        "exp": expire,         # "exp" = expiration time — the standard JWT field for when it expires
+        "exp": expire,             # "exp" = expiration time — the standard JWT field for when it expires
+        "jti": str(uuid.uuid4()),  # "jti" = JWT ID — unique per token, used for blacklisting on logout
     }
     
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
