@@ -1,11 +1,15 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app import database, models
 from app.database import engine
 from app.routers import analytics, books, borrowings, admin, auth, users
 from app.scheduler import start_scheduler, stop_scheduler
+from app.security.rate_limit import limiter
 from app.exceptions import (
     BookNotFound,
     BookNotAvailable,
@@ -18,6 +22,7 @@ from app.exceptions import (
     InsufficientPermissions,
     UserNotFound,
     UsernameAlreadyExists,
+    InvalidResetToken,
 )
 
 
@@ -31,6 +36,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Library Book Borrowing System", lifespan=lifespan)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 
 # Existing handlers...
@@ -61,7 +70,7 @@ async def handle_duplicate_borrow(request: Request, exc: DuplicateActiveBorrowin
 
 @app.exception_handler(AccountSuspended)
 async def handle_account_suspended(request: Request, exc: AccountSuspended):
-    return JSONResponse(status_code=403, content={"detail": "Your account is on hold due to overdue returns. Please return all overdue books to restore borrowing access."})
+    return JSONResponse(status_code=403, content={"detail": "Your account is on hold due to overdue returns. Return all overdue books to automatically restore borrowing access."})
 
 
 # New auth handlers
@@ -92,6 +101,11 @@ async def handle_user_not_found(request: Request, exc: UserNotFound):
 @app.exception_handler(UsernameAlreadyExists)
 async def handle_username_exists(request: Request, exc: UsernameAlreadyExists):
     return JSONResponse(status_code=400, content={"detail": "Username already taken"})
+
+
+@app.exception_handler(InvalidResetToken)
+async def handle_invalid_reset_token(request: Request, exc: InvalidResetToken):
+    return JSONResponse(status_code=400, content={"detail": "Invalid or expired reset token"})
 
 
 app.include_router(auth.router)

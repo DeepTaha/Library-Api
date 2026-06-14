@@ -12,12 +12,14 @@ def create_access_token(user_id: int, role: str) -> str:
     Create a signed JWT containing the user's id and role.
     The token expires after ACCESS_TOKEN_EXPIRE (set in config).
     """
-    expire = datetime.now(timezone.utc) + ACCESS_TOKEN_EXPIRE
+    now = datetime.now(timezone.utc)
+    expire = now + ACCESS_TOKEN_EXPIRE
 
     payload = {
         "sub": str(user_id),       # "sub" = subject — the standard JWT field for "who this token is about"
         "role": role,
-        "exp": expire,             # "exp" = expiration time — the standard JWT field for when it expires
+        "exp": expire,             # "exp" = expiration time
+        "iat": now,                # "iat" = issued-at — used to check against tokens_valid_from
         "jti": str(uuid.uuid4()),  # "jti" = JWT ID — unique per token, used for blacklisting on logout
     }
     

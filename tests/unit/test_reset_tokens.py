@@ -1,33 +1,57 @@
-"""Unit tests for the reset_tokens module."""
+"""Unit tests for the DB-backed reset_tokens module."""
+from datetime import datetime, timezone, timedelta
+
 import pytest
+
+from app.models.password_reset_token import PasswordResetToken
 from app.security import reset_tokens
 
 
-@pytest.fixture(autouse=True)
-def clean_store():
-    reset_tokens.clear()
-    yield
-    reset_tokens.clear()
+@pytest.mark.asyncio
+async def test_create_returns_token_string(db_session, seeded_user_id):
+    token = await reset_tokens.create(db_session, user_id=seeded_user_id)
+    assert isinstance(token, str)
+    assert len(token) > 0
 
 
-def test_create_and_get_user_id():
-    token = reset_tokens.create(user_id=42)
-    assert reset_tokens.get_user_id(token) == 42
+@pytest.mark.asyncio
+async def test_get_user_id_returns_correct_user(db_session, seeded_user_id):
+    token = await reset_tokens.create(db_session, user_id=seeded_user_id)
+    assert await reset_tokens.get_user_id(db_session, token) == seeded_user_id
 
 
-def test_unknown_token_returns_none():
-    assert reset_tokens.get_user_id("does-not-exist") is None
+@pytest.mark.asyncio
+async def test_unknown_token_returns_none(db_session):
+    assert await reset_tokens.get_user_id(db_session, "does-not-exist") is None
 
 
-def test_consume_invalidates_token():
-    token = reset_tokens.create(user_id=7)
-    reset_tokens.consume(token)
-    assert reset_tokens.get_user_id(token) is None
+@pytest.mark.asyncio
+async def test_consume_invalidates_token(db_session, seeded_user_id):
+    token = await reset_tokens.create(db_session, user_id=seeded_user_id)
+    await reset_tokens.consume(db_session, token)
+    assert await reset_tokens.get_user_id(db_session, token) is None
 
 
-def test_clear_removes_all_tokens():
-    token_a = reset_tokens.create(user_id=1)
-    token_b = reset_tokens.create(user_id=2)
-    reset_tokens.clear()
-    assert reset_tokens.get_user_id(token_a) is None
-    assert reset_tokens.get_user_id(token_b) is None
+@pytest.mark.asyncio
+async def test_expired_token_returns_none(db_session, seeded_user_id):
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db_session.add(PasswordResetToken(token="expired-tok", user_id=seeded_user_id, expires_at=past))
+    await db_session.commit()
+
+    assert await reset_tokens.get_user_id(db_session, "expired-tok") is None
+
+
+@pytest.mark.asyncio
+async def test_purge_removes_expired_tokens(db_session, seeded_user_id):
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    future = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    db_session.add(PasswordResetToken(token="expired-tok", user_id=seeded_user_id, expires_at=past))
+    db_session.add(PasswordResetToken(token="live-tok", user_id=seeded_user_id, expires_at=future))
+    await db_session.commit()
+
+    count = await reset_tokens.purge_expired(db_session)
+
+    assert count == 1
+    assert await reset_tokens.get_user_id(db_session, "expired-tok") is None
+    assert await reset_tokens.get_user_id(db_session, "live-tok") == seeded_user_id

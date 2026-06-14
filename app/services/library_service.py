@@ -15,6 +15,7 @@ from app.exceptions import (
 )
 from app.repositories.book_repository import BookRepository
 from app.repositories.borrowing_repository import BorrowingRepository
+from app.repositories.user_repository import UserRepository
 from app.models import User, UserRole
 from app import schemas
 
@@ -38,6 +39,7 @@ class LibraryService:
         self.db = db
         self.book_repo = BookRepository(db)
         self.borrow_repo = BorrowingRepository(db)
+        self.user_repo = UserRepository(db)
 
     async def add_book(self, book_data: schemas.BookCreate):
         book = await self.book_repo.create(book_data.model_dump())
@@ -122,9 +124,6 @@ class LibraryService:
         return borrowing
 
     async def borrow_book(self, request: schemas.BorrowRequest, current_user: User):
-        if current_user.is_suspended:
-            raise AccountSuspended()
-
         book = await self.book_repo.get_by_id_locked(request.book_id)
 
         if not book:
@@ -167,6 +166,16 @@ class LibraryService:
         book = await self.book_repo.get_by_id_locked(borrowing.book_id)
         if book:
             book.available_copies += 1
+
+        target_user = (
+            current_user
+            if borrowing.user_id == current_user.id
+            else await self.user_repo.get_by_id(borrowing.user_id)
+        )
+        if target_user and target_user.is_suspended:
+            remaining = await self.borrow_repo.count_active_overdue_by_user(target_user.id)
+            if remaining == 0:
+                target_user.is_suspended = False
 
         await self.db.commit()
         await self.db.refresh(borrowing)
@@ -211,6 +220,19 @@ class LibraryService:
             await self.db.commit()
             for b in succeeded:
                 await self.db.refresh(b)
+
+            # Lift suspension for users who no longer have any active overdue borrowings.
+            seen_users: set[int] = set()
+            for b in succeeded:
+                if b.user_id not in seen_users:
+                    seen_users.add(b.user_id)
+                    user = await self.user_repo.get_by_id(b.user_id)
+                    if user and user.is_suspended:
+                        remaining = await self.borrow_repo.count_active_overdue_by_user(b.user_id)
+                        if remaining == 0:
+                            user.is_suspended = False
+            if seen_users:
+                await self.db.commit()
 
         return {
             "succeeded": succeeded,

@@ -1,14 +1,16 @@
 """Application configuration — secrets, settings, constants."""
 import os
 from datetime import timedelta
+from dotenv import load_dotenv
 
-# JWT settings
-# In production, NEVER hardcode this. Use an environment variable.
-# For now, we keep a default so the app can start without setup.
-SECRET_KEY = os.getenv(
-    "SECRET_KEY",
-    "your-secret-key-change-this-in-production-please-make-it-long-and-random"
-)
+load_dotenv()
+
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "SECRET_KEY environment variable is not set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
 
 # The algorithm used to sign JWTs.
 # HS256 = HMAC with SHA-256. Fast, secure, uses a shared secret.

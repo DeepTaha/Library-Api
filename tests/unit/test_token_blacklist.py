@@ -1,35 +1,67 @@
-"""Unit tests for the token blacklist module and logout-related JWT behaviour."""
+"""Unit tests for the DB-backed token blacklist module."""
+from datetime import datetime, timezone, timedelta
+
 import pytest
+
+from app.models.blacklisted_token import BlacklistedToken
 from app.security import token_blacklist
 from app.security.jwt import create_access_token, decode_access_token
 
 
-@pytest.fixture(autouse=True)
-def clean_blacklist():
-    token_blacklist.clear()
-    yield
-    token_blacklist.clear()
+@pytest.mark.asyncio
+async def test_contains_returns_false_for_unknown_jti(db_session):
+    assert await token_blacklist.contains(db_session, "nonexistent-jti") is False
 
 
-def test_contains_returns_false_for_unknown_jti():
-    assert token_blacklist.contains("nonexistent-jti") is False
+@pytest.mark.asyncio
+async def test_add_then_contains_returns_true(db_session):
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    await token_blacklist.add(db_session, "abc-123", expires_at)
+    assert await token_blacklist.contains(db_session, "abc-123") is True
 
 
-def test_add_then_contains_returns_true():
-    token_blacklist.add("abc-123")
-    assert token_blacklist.contains("abc-123") is True
+@pytest.mark.asyncio
+async def test_contains_returns_false_for_different_jti(db_session):
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+    await token_blacklist.add(db_session, "jti-A", expires_at)
+    assert await token_blacklist.contains(db_session, "jti-B") is False
 
 
-def test_clear_empties_the_blacklist():
-    token_blacklist.add("jti-1")
-    token_blacklist.add("jti-2")
-    token_blacklist.clear()
-    assert token_blacklist.contains("jti-1") is False
-    assert token_blacklist.contains("jti-2") is False
+@pytest.mark.asyncio
+async def test_purge_removes_expired_rows(db_session):
+    past = datetime.now(timezone.utc) - timedelta(minutes=1)
+    future = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    db_session.add(BlacklistedToken(jti="expired-jti", expires_at=past))
+    db_session.add(BlacklistedToken(jti="live-jti", expires_at=future))
+    await db_session.commit()
+
+    count = await token_blacklist.purge_expired(db_session)
+
+    assert count == 1
+    assert not await token_blacklist.contains(db_session, "expired-jti")
+    assert await token_blacklist.contains(db_session, "live-jti")
 
 
-def test_create_access_token_includes_jti():
-    token = create_access_token(user_id=1, role="ADMIN")
-    payload = decode_access_token(token)
-    assert "jti" in payload
-    assert payload["jti"]
+@pytest.mark.asyncio
+async def test_purge_returns_zero_when_nothing_expired(db_session):
+    future = datetime.now(timezone.utc) + timedelta(hours=1)
+    db_session.add(BlacklistedToken(jti="live-jti", expires_at=future))
+    await db_session.commit()
+
+    count = await token_blacklist.purge_expired(db_session)
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_purge_empty_table_returns_zero(db_session):
+    count = await token_blacklist.purge_expired(db_session)
+    assert count == 0
+
+
+def test_create_access_token_includes_unique_jti():
+    token_a = create_access_token(user_id=1, role="ADMIN")
+    token_b = create_access_token(user_id=1, role="ADMIN")
+    jti_a = decode_access_token(token_a)["jti"]
+    jti_b = decode_access_token(token_b)["jti"]
+    assert jti_a != jti_b

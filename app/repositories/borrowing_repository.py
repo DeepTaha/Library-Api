@@ -112,6 +112,16 @@ class BorrowingRepository:
         )
         return result.scalars().all()
 
+    async def count_active_overdue_by_user(self, user_id: int) -> int:
+        """Count unreturned borrowings that are marked overdue for the given user."""
+        result = await self.db.execute(
+            select(func.count(models.Borrowing.id))
+            .where(models.Borrowing.user_id == user_id)
+            .where(models.Borrowing.returned_at.is_(None))
+            .where(models.Borrowing.is_overdue.is_(True))
+        )
+        return result.scalar_one()
+
     async def stream_history_by_user(self, user_id: int):
         """Async generator that yields borrowings one at a time, fetching in batches of 100."""
         query = (

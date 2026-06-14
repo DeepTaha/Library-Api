@@ -1,4 +1,6 @@
 """FastAPI dependencies for authentication and authorization."""
+from datetime import datetime, timezone
+
 from fastapi import Depends
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,7 +10,7 @@ from app.models import User, UserRole
 from app.repositories.user_repository import UserRepository
 from app.security.jwt import decode_access_token
 from app.security import token_blacklist
-from app.exceptions import InvalidToken, InsufficientPermissions, UserNotFound
+from app.exceptions import InvalidToken, InsufficientPermissions, UserNotFound, AccountSuspended
 
 
 # This tells FastAPI: "Tokens come in the Authorization header as 'Bearer <token>'."
@@ -29,7 +31,7 @@ async def get_current_user(
 
     # Reject tokens that have been explicitly invalidated via logout.
     jti = payload.get("jti")
-    if jti and token_blacklist.contains(jti):
+    if jti and await token_blacklist.contains(db, jti):
         raise InvalidToken()
 
     user_id_str = payload.get("sub")
@@ -45,6 +47,18 @@ async def get_current_user(
     user = await user_repo.get_by_id(user_id)
     if user is None:
         raise InvalidToken()
+
+    # Reject tokens issued before the last credential/privilege change.
+    # JWT iat is seconds-precision; strip sub-second part of tokens_valid_from
+    # so tokens issued in the same second as a reset are not incorrectly rejected.
+    iat = payload.get("iat")
+    if iat is not None:
+        issued_at = datetime.fromtimestamp(iat, tz=timezone.utc)
+        if issued_at < user.tokens_valid_from.replace(microsecond=0):
+            raise InvalidToken()
+
+    if user.is_suspended:
+        raise AccountSuspended()
 
     return user
 

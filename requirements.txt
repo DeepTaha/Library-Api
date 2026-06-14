@@ -12,3 +12,5 @@ pytest
 pytest-asyncio
 httpx
 apscheduler
+python-dotenv
+slowapi

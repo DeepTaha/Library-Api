@@ -62,3 +62,9 @@ class TokenResponse(BaseModel):
     """Output shape after successful login — contains the JWT."""
     access_token: str
     token_type: str = "bearer"
+
+
+class ResetPasswordRequest(BaseModel):
+    """Input shape for completing a password reset."""
+    token: str
+    new_password: str = Field(..., min_length=8)

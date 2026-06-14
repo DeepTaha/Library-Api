@@ -24,3 +24,8 @@ class UserNotFound(Exception):
 class UsernameAlreadyExists(Exception):
     """Raised when trying to create a user with a taken username."""
     pass
+
+
+class InvalidResetToken(Exception):
+    """Raised when a password-reset token is missing, expired, or already used."""
+    pass

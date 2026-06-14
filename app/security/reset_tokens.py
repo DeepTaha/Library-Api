@@ -1,36 +1,50 @@
-"""In-memory store for password-reset tokens."""
+"""DB-backed store for password-reset tokens. Survives restarts and works across all workers."""
+"""just like repository"""
 import uuid
 from datetime import datetime, timezone, timedelta
 
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
+
+from app.models.password_reset_token import PasswordResetToken
+
 RESET_TOKEN_EXPIRE = timedelta(hours=1)
 
-# token string → {user_id, expires_at}
-_store: dict[str, dict] = {}
 
-
-def create(user_id: int) -> str:
+async def create(db: AsyncSession, user_id: int) -> str:
     token = str(uuid.uuid4())
-    _store[token] = {
-        "user_id": user_id,
-        "expires_at": datetime.now(timezone.utc) + RESET_TOKEN_EXPIRE,
-    }
+    db.add(PasswordResetToken(
+        token=token,
+        user_id=user_id,
+        expires_at=datetime.now(timezone.utc) + RESET_TOKEN_EXPIRE,
+    ))
+    await db.commit()
     return token
 
 
-def get_user_id(token: str) -> int | None:
-    entry = _store.get(token)
+async def get_user_id(db: AsyncSession, token: str) -> int | None:
+    result = await db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token == token)
+    )
+    entry = result.scalar_one_or_none()
     if entry is None:
         return None
-    if datetime.now(timezone.utc) > entry["expires_at"]:
-        del _store[token]
+    if datetime.now(timezone.utc) > entry.expires_at:
+        await db.delete(entry)
+        await db.commit()
         return None
-    return entry["user_id"]
+    return entry.user_id
 
 
-def consume(token: str) -> None:
+async def consume(db: AsyncSession, token: str) -> None:
     """Remove the token after it has been used (one-time use)."""
-    _store.pop(token, None)
+    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.token == token))
+    await db.commit()
 
 
-def clear() -> None:
-    _store.clear()
+async def purge_expired(db: AsyncSession) -> int:
+    result = await db.execute(
+        delete(PasswordResetToken).where(PasswordResetToken.expires_at <= datetime.now(timezone.utc))
+    )
+    await db.commit()
+    return result.rowcount

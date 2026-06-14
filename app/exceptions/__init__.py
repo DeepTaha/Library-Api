@@ -14,6 +14,7 @@ from app.exceptions.auth import (
     InsufficientPermissions,
     UserNotFound,
     UsernameAlreadyExists,
+    InvalidResetToken,
 )
 
 __all__ = [
@@ -30,4 +31,5 @@ __all__ = [
     "InsufficientPermissions",
     "UserNotFound",
     "UsernameAlreadyExists",
+    "InvalidResetToken",
 ]

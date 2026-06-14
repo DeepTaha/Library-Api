@@ -4,8 +4,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# CRITICAL: set this BEFORE importing anything from your app
+# CRITICAL: set these BEFORE importing anything from your app
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:lmessi10@localhost:5432/library_test"
+os.environ["RATELIMIT_ENABLED"] = "0"  # disable rate limiting in the test suite
 
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
@@ -15,9 +16,8 @@ from sqlalchemy import text
 from app.main import app
 from app.database import get_db, Base
 from app import models  # noqa: F401
-from app.security import token_blacklist, reset_tokens
 
-# Module-level reference so fixtures like `seeded_admin` can create sessions.
+# Module-level reference so fixtures like `seeded_admin` and `db_session` can create sessions.
 _test_session_factory = None
 
 
@@ -40,9 +40,6 @@ async def setup_test_db():
                 await session.close()
 
     app.dependency_overrides[get_db] = override_get_db
-
-    token_blacklist.clear()
-    reset_tokens.clear()
 
     yield
 
@@ -138,3 +135,28 @@ async def reader_token(client, seeded_reader):
 async def reader_headers(reader_token):
     """Returns Authorization headers for the seeded reader user."""
     return {"Authorization": f"Bearer {reader_token}"}
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def db_session():
+    """Provides a direct DB session for async unit-style tests."""
+    async with _test_session_factory() as session:
+        yield session
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def seeded_user_id():
+    """Creates a minimal user and returns its DB id, for FK-constrained unit tests."""
+    from app.models.user import User, UserRole
+    from app.security.password import hash_password
+
+    async with _test_session_factory() as session:
+        user = User(
+            username="fxtuser",
+            hashed_password=hash_password("x"),
+            role=UserRole.READER,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user.id

@@ -25,6 +25,13 @@ class User(Base):
     date_of_birth = Column(Date, nullable=True)
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     is_suspended = Column(Boolean, nullable=False, default=False)
-    
+    # Bump this to now() to instantly invalidate all tokens issued before that moment.
+    # Set on password reset, role change, or suspension.
+    tokens_valid_from = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
     # A user can have many borrowings
     borrowings = relationship("Borrowing", back_populates="user")
