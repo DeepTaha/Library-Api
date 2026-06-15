@@ -13,6 +13,7 @@ class Borrowing(Base):
     due_date = Column(DateTime(timezone=True), nullable=False)
     returned_at = Column(DateTime(timezone=True), nullable=True)
     is_overdue = Column(Boolean, nullable=False, default=False)
+    extension_count = Column(Integer, nullable=False, default=0)
 
     book = relationship("Book", back_populates="borrowings")
     user = relationship("User", back_populates="borrowings")

@@ -1,6 +1,10 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timezone, timedelta
+import logging
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
+
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import IntegrityError
+from datetime import datetime, timezone, timedelta
 
 from app.exceptions import (
     BookNotFound,
@@ -11,7 +15,10 @@ from app.exceptions import (
     BookAlreadyReturned,
     InsufficientPermissions,
     AgeRestricted,
+    AgeVerificationRequired,
     AccountSuspended,
+    ExtensionLimitReached,
+    CannotExtendOverdue,
 )
 from app.repositories.book_repository import BookRepository
 from app.repositories.borrowing_repository import BorrowingRepository
@@ -19,19 +26,52 @@ from app.repositories.user_repository import UserRepository
 from app.models import User, UserRole
 from app import schemas
 
-LOG_FILE = Path("overdue.log")
+_LOG_PATH = Path(__file__).resolve().parent.parent / "overdue.log"
+_overdue_handler = RotatingFileHandler(
+    _LOG_PATH, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
+)
+_overdue_handler.setFormatter(logging.Formatter("%(message)s"))
+overdue_logger = logging.getLogger("overdue")
+overdue_logger.setLevel(logging.INFO)
+if not overdue_logger.handlers:
+    overdue_logger.addHandler(_overdue_handler)
+overdue_logger.propagate = False
+
 MAX_ACTIVE_BORROWINGS_PER_USER = 3
 AGE_RESTRICTION_THRESHOLD = 18
+MAX_EXTENSIONS = 2
 
 
-def _user_is_underage(user: User) -> bool:
-    """Return True if the user has a DOB and is under 18."""
+def _hide_age_restricted(user: User) -> bool:
+    """Return True when the user's age cannot be confirmed as 18+.
+
+    Used by the book listing query to filter out restricted titles for users
+    who either have no DOB on file or are confirmed underage.
+    """
     if user.date_of_birth is None:
-        return False
+        return True
     today = datetime.now(timezone.utc).date()
     dob = user.date_of_birth
     age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
     return age < AGE_RESTRICTION_THRESHOLD
+
+
+def _check_age_restriction(user: User, book) -> None:
+    """Raise if the user cannot access an age-restricted book.
+
+    Raises AgeVerificationRequired when DOB is missing (fail-safe: unknown age
+    is not treated as adult). Raises AgeRestricted when DOB is present and
+    confirms the user is under 18.
+    """
+    if not book.is_age_restricted:
+        return
+    if user.date_of_birth is None:
+        raise AgeVerificationRequired()
+    today = datetime.now(timezone.utc).date()
+    dob = user.date_of_birth
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    if age < AGE_RESTRICTION_THRESHOLD:
+        raise AgeRestricted()
 
 
 class LibraryService:
@@ -48,15 +88,14 @@ class LibraryService:
         return book
 
     async def get_all_books(self, available, author, skip: int, limit: int, current_user: User):
-        hide_restricted = _user_is_underage(current_user)
+        hide_restricted = _hide_age_restricted(current_user)
         return await self.book_repo.list_all(available, author, skip, limit, hide_restricted)
 
     async def get_book_by_id(self, book_id: int, current_user: User):
         book = await self.book_repo.get_by_id(book_id)
         if book is None:
             raise BookNotFound()
-        if book.is_age_restricted and _user_is_underage(current_user):
-            raise AgeRestricted()
+        _check_age_restriction(current_user, book)
         return book
 
     async def update_book(self, book_id: int, data: schemas.BookUpdate):
@@ -118,7 +157,12 @@ class LibraryService:
             raise BorrowingNotFound()
         if borrowing.returned_at is not None:
             raise BookAlreadyReturned()
+        if borrowing.is_overdue:
+            raise CannotExtendOverdue()
+        if borrowing.extension_count >= MAX_EXTENSIONS:
+            raise ExtensionLimitReached()
         borrowing.due_date = borrowing.due_date + timedelta(days=days)
+        borrowing.extension_count += 1
         await self.db.commit()
         await self.db.refresh(borrowing)
         return borrowing
@@ -128,8 +172,7 @@ class LibraryService:
 
         if not book:
             raise BookNotFound()
-        if book.is_age_restricted and _user_is_underage(current_user):
-            raise AgeRestricted()
+        _check_age_restriction(current_user, book)
         if book.available_copies < 1:
             raise BookNotAvailable()
 
@@ -146,7 +189,11 @@ class LibraryService:
         book.available_copies -= 1
         borrowing = await self.borrow_repo.create(request.book_id, current_user.id)
 
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError:
+            await self.db.rollback()
+            raise DuplicateActiveBorrowing()
         await self.db.refresh(borrowing)
         return borrowing
 
@@ -165,7 +212,7 @@ class LibraryService:
         borrowing.returned_at = datetime.now(timezone.utc)
         book = await self.book_repo.get_by_id_locked(borrowing.book_id)
         if book:
-            book.available_copies += 1
+            book.available_copies = min(book.available_copies + 1, book.total_copies)
 
         target_user = (
             current_user
@@ -195,7 +242,23 @@ class LibraryService:
         succeeded = []
         failed = []
 
+        # Detect duplicates upfront so they get a distinct reason from "already_returned"
+        # (which means returned in a prior request) and so available_copies is never
+        # incremented more than once for the same borrowing in a single request.
+        seen_ids: set[int] = set()
+        duplicate_ids: set[int] = set()
         for bid in borrowing_ids:
+            if bid in seen_ids:
+                duplicate_ids.add(bid)
+            seen_ids.add(bid)
+
+        for bid in borrowing_ids:
+            if bid in duplicate_ids:
+                failed.append({"borrowing_id": bid, "reason": "duplicate_in_request"})
+
+        for bid in dict.fromkeys(borrowing_ids):
+            if bid in duplicate_ids:
+                continue
             borrowing = await self.borrow_repo.get_by_id(bid)
 
             if borrowing is None:
@@ -213,7 +276,7 @@ class LibraryService:
             borrowing.returned_at = now
             book = await self.book_repo.get_by_id_locked(borrowing.book_id)
             if book:
-                book.available_copies += 1
+                book.available_copies = min(book.available_copies + 1, book.total_copies)
             succeeded.append(borrowing)
 
         if succeeded:
@@ -275,8 +338,8 @@ class LibraryService:
 
         await self.db.commit()
 
-        with LOG_FILE.open("a", encoding="utf-8") as f:
-            f.writelines(lines)
+        for line in lines:
+            overdue_logger.info(line.rstrip())
 
         return len(borrowings)
 
@@ -294,5 +357,5 @@ class LibraryService:
             )
             lines.append(line)
 
-        with LOG_FILE.open("a", encoding="utf-8") as f:
-            f.writelines(lines)
+        for line in lines:
+            overdue_logger.info(line.rstrip())

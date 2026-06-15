@@ -1,8 +1,8 @@
 """Database queries for users."""
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.models import User
+from app.models import User, UserRole
 
 
 class UserRepository:
@@ -43,6 +43,12 @@ class UserRepository:
             select(User).offset(offset).limit(limit)
         )
         return result.scalars().all()
+
+    async def count_admins(self) -> int:
+        result = await self.db.execute(
+            select(func.count()).where(User.role == UserRole.ADMIN)
+        )
+        return result.scalar_one()
 
     async def delete(self, user: User) -> None:
         await self.db.delete(user)

@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Borrowing Report — {{ username }}</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 24mm 20mm;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "Helvetica Neue", Arial, sans-serif;
+      font-size: 13px;
+      color: #1a1a2e;
+      background: #ffffff;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: table;
+      width: 100%;
+      border-bottom: 3px solid #4a90d9;
+      padding-bottom: 14px;
+      margin-bottom: 24px;
+    }
+
+    .header-left {
+      display: table-cell;
+      vertical-align: top;
+    }
+
+    .header-right {
+      display: table-cell;
+      vertical-align: top;
+      text-align: right;
+      width: 160px;
+    }
+
+    .header-left h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a1a2e;
+      letter-spacing: -0.5px;
+    }
+
+    .header-left p {
+      margin-top: 4px;
+      font-size: 11px;
+      color: #666;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #4a90d9;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 4px 10px;
+      border-radius: 12px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .header-right p {
+      margin-top: 6px;
+      font-size: 10px;
+      color: #888;
+    }
+
+    /* ── User Info Card ── */
+    .user-card {
+      background: #f0f6ff;
+      border-left: 4px solid #4a90d9;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-bottom: 24px;
+    }
+
+    .user-card h2 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
+
+    .user-meta {
+      display: table;
+      width: 100%;
+    }
+
+    .user-meta-row {
+      display: table-row;
+    }
+
+    .user-meta-cell {
+      display: table-cell;
+      font-size: 12px;
+      color: #555;
+      padding-bottom: 4px;
+      padding-right: 24px;
+      white-space: nowrap;
+    }
+
+    .user-meta-cell strong {
+      color: #1a1a2e;
+    }
+
+    /* ── Section Title ── */
+    .section-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1a1a2e;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 10px;
+      padding-bottom: 5px;
+      border-bottom: 1px solid #dde5f0;
+    }
+
+    /* ── Summary boxes — table-based for WeasyPrint ── */
+    .summary {
+      display: table;
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 28px;
+    }
+
+    .summary-box {
+      display: table-cell;
+      width: 25%;
+      background: #f7f9fd;
+      border: 1px solid #dde5f0;
+      border-radius: 8px;
+      padding: 12px 8px;
+      text-align: center;
+    }
+
+    .summary-box + .summary-box {
+      padding-left: 16px;
+    }
+
+    .summary-box .num {
+      font-size: 24px;
+      font-weight: 700;
+      color: #4a90d9;
+      line-height: 1;
+    }
+
+    .summary-box .lbl {
+      font-size: 10px;
+      color: #888;
+      margin-top: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    /* ── Table ── */
+    table.data {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 32px;
+      table-layout: fixed;
+    }
+
+    table.data col.c-num        { width: 4%; }
+    table.data col.c-title      { width: 15%; }
+    table.data col.c-author     { width: 12%; }
+    table.data col.c-genre      { width: 9%; }
+    table.data col.c-borrowed   { width: 14%; }
+    table.data col.c-due        { width: 14%; }
+    table.data col.c-returned   { width: 14%; }
+    table.data col.c-extensions { width: 5%; }
+    table.data col.c-status     { width: 13%; }
+
+    table.data thead tr {
+      background: #1a1a2e;
+      color: #ffffff;
+    }
+
+    table.data thead th {
+      padding: 8px 5px;
+      text-align: left;
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      word-break: break-word;
+    }
+
+    table.data tbody tr {
+      border-bottom: 1px solid #eaeff7;
+    }
+
+    table.data tbody tr:nth-child(even) {
+      background: #f7f9fd;
+    }
+
+    table.data tbody td {
+      padding: 8px 5px;
+      font-size: 11px;
+      color: #333;
+      vertical-align: top;
+      word-break: break-word;
+    }
+
+    /* ── Status badges ── */
+    .status {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 8px;
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .status-active   { background: #e3f5e9; color: #2e7d32; }
+    .status-overdue  { background: #fdecea; color: #c62828; }
+    .status-returned { background: #e8eaf6; color: #3949ab; }
+
+    /* ── Footer ── */
+    .footer {
+      border-top: 1px solid #dde5f0;
+      padding-top: 10px;
+      font-size: 10px;
+      color: #aaa;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── HEADER ── -->
+  <div class="header">
+    <div class="header-left">
+      <h1>Library Borrowing Report</h1>
+      <p>Generated on {{ generated_at }}</p>
+    </div>
+    <div class="header-right">
+      <span class="badge">Personal Report</span>
+      <p>Library Book Borrowing System</p>
+    </div>
+  </div>
+
+  <!-- ── USER CARD ── -->
+  <div class="user-card">
+    <h2>{{ username }}</h2>
+    <div class="user-meta">
+      <div class="user-meta-row">
+        <span class="user-meta-cell"><strong>Email:</strong> {{ email if email else "—" }}</span>
+        <span class="user-meta-cell"><strong>Role:</strong> {{ role }}</span>
+        <span class="user-meta-cell"><strong>Member Since:</strong> {{ created_at }}</span>
+        <span class="user-meta-cell"><strong>Account Status:</strong> {{ "Suspended" if is_suspended else "Active" }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUMMARY STRIP ── -->
+  <p class="section-title">Summary</p>
+  <div class="summary">
+    <div class="summary-box">
+      <div class="num">{{ total }}</div>
+      <div class="lbl">Total Borrowings</div>
+    </div>
+    <div class="summary-box">
+      <div class="num">{{ active }}</div>
+      <div class="lbl">Currently Active</div>
+    </div>
+    <div class="summary-box">
+      <div class="num">{{ overdue }}</div>
+      <div class="lbl">Overdue</div>
+    </div>
+    <div class="summary-box">
+      <div class="num">{{ returned }}</div>
+      <div class="lbl">Returned</div>
+    </div>
+  </div>
+
+  <!-- ── BORROWINGS TABLE ── -->
+  <p class="section-title">Borrowing Details</p>
+
+  {% if borrowings %}
+  <table class="data">
+    <colgroup>
+      <col class="c-num" />
+      <col class="c-title" />
+      <col class="c-author" />
+      <col class="c-genre" />
+      <col class="c-borrowed" />
+      <col class="c-due" />
+      <col class="c-returned" />
+      <col class="c-extensions" />
+      <col class="c-status" />
+    </colgroup>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Book Title</th>
+        <th>Author</th>
+        <th>Genre</th>
+        <th>Borrowed At</th>
+        <th>Due Date</th>
+        <th>Returned At</th>
+        <th>Ext.</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for b in borrowings %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><strong>{{ b.book_title }}</strong></td>
+        <td>{{ b.book_author }}</td>
+        <td>{{ b.book_genre if b.book_genre else "—" }}</td>
+        <td>{{ b.borrowed_at }}</td>
+        <td>{{ b.due_date }}</td>
+        <td>{{ b.returned_at if b.returned_at else "—" }}</td>
+        <td style="text-align:center;">{{ b.extension_count }}</td>
+        <td>
+          {% if b.returned_at %}
+            <span class="status status-returned">Returned</span>
+          {% elif b.is_overdue %}
+            <span class="status status-overdue">Overdue</span>
+          {% else %}
+            <span class="status status-active">Active</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p style="color:#888; font-style:italic; margin-bottom:32px;">No borrowing records found for this user.</p>
+  {% endif %}
+
+  <!-- ── FOOTER ── -->
+  <div class="footer">
+    This report was automatically generated by the Library Book Borrowing System.
+    For any queries contact your librarian.
+  </div>
+
+</body>
+</html>

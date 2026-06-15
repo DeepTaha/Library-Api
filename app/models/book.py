@@ -7,8 +7,8 @@ class Book(Base):
     __tablename__ = "books"
 
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, nullable=False)
-    author = Column(String, nullable=False)
+    title = Column(String(255), nullable=False)
+    author = Column(String(255), nullable=False)
     total_copies = Column(Integer, nullable=False, default=0)
     available_copies = Column(Integer, nullable=False, default=0)
     genre = Column(String(100), nullable=True)

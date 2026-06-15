@@ -2,7 +2,7 @@ fastapi
 uvicorn[standard]
 sqlalchemy[asyncio]
 asyncpg
-pydantic
+pydantic[email]
 alembic
 passlib[bcrypt]
 bcrypt==4.0.1
@@ -14,3 +14,6 @@ httpx
 apscheduler
 python-dotenv
 slowapi
+jinja2
+weasyprint
+aiosmtplib

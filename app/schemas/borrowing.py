@@ -29,7 +29,7 @@ class BulkReturnRequest(BaseModel):
 
 class BulkReturnFailure(BaseModel):
     borrowing_id: int
-    reason: str  # "not_found" | "already_returned" | "wrong_reader"
+    reason: str  # "not_found" | "already_returned" | "wrong_reader" | "duplicate_in_request"
 
 
 class BulkReturnResponse(BaseModel):

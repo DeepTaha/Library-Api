@@ -6,12 +6,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.user_repository import UserRepository
 from app.security.password import hash_password, verify_password
 from app.security.jwt import create_access_token
+from sqlalchemy.exc import IntegrityError
+
 from app.exceptions import (
     InvalidCredentials,
     UserNotFound,
     UsernameAlreadyExists,
+    EmailAlreadyExists,
     InvalidResetToken,
     AccountSuspended,
+    CannotSelfModify,
+    LastAdminProtected,
 )
 from app.models import User, UserRole
 from app.security import reset_tokens
@@ -36,10 +41,16 @@ class AuthService:
             email=user_data.email,
             date_of_birth=user_data.date_of_birth,
         )
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError as e:
+            await self.db.rollback()
+            if "users_email_key" in str(e.orig):
+                raise EmailAlreadyExists()
+            raise UsernameAlreadyExists()
         await self.db.refresh(user)
         return user
-    
+
     async def register(self, username: str, password: str, email: str | None = None, date_of_birth=None) -> User:
         """Public reader self-signup. Role is always READER."""
         existing = await self.user_repo.get_by_username(username)
@@ -53,7 +64,13 @@ class AuthService:
             email=email,
             date_of_birth=date_of_birth,
         )
-        await self.db.commit()
+        try:
+            await self.db.commit()
+        except IntegrityError as e:
+            await self.db.rollback()
+            if "users_email_key" in str(e.orig):
+                raise EmailAlreadyExists()
+            raise UsernameAlreadyExists()
         await self.db.refresh(user)
         return user
 
@@ -118,7 +135,7 @@ class AuthService:
     async def list_users(self, offset: int, limit: int):
         return await self.user_repo.list_all(offset, limit)
     
-    async def update_user(self, user_id: int, update_data: schemas.UserUpdate) -> User:
+    async def update_user(self, user_id: int, update_data: schemas.UserUpdate, acting_admin_id: int) -> User:
         user = await self.user_repo.get_by_id(user_id)
         if user is None:
             raise UserNotFound()
@@ -132,6 +149,12 @@ class AuthService:
             user.username = update_data.username
 
         if update_data.role is not None and update_data.role != user.role:
+            demoting_admin = user.role == UserRole.ADMIN and update_data.role != UserRole.ADMIN
+            if demoting_admin:
+                if user_id == acting_admin_id:
+                    raise CannotSelfModify()
+                if await self.user_repo.count_admins() <= 1:
+                    raise LastAdminProtected()
             user.role = update_data.role
             invalidate_sessions = True
 
@@ -156,9 +179,13 @@ class AuthService:
         user.tokens_valid_from = datetime.now(timezone.utc)
         await self.db.commit()
 
-    async def delete_user(self, user_id: int) -> None:
+    async def delete_user(self, user_id: int, acting_admin_id: int) -> None:
+        if user_id == acting_admin_id:
+            raise CannotSelfModify()
         user = await self.user_repo.get_by_id(user_id)
         if user is None:
             raise UserNotFound()
+        if user.role == UserRole.ADMIN and await self.user_repo.count_admins() <= 1:
+            raise LastAdminProtected()
         await self.user_repo.delete(user)
         await self.db.commit()

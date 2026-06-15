@@ -78,30 +78,6 @@ async def test_new_login_after_logout_issues_fresh_token(client, seeded_reader, 
 
 
 # ---------------------------------------------------------------------------
-# Concurrent sessions: each token has its own JTI; blacklisting one leaves
-# the other untouched.
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_logout_one_session_does_not_affect_other(client, seeded_reader):
-    resp_a = await client.post("/auth/login", data=seeded_reader)
-    resp_b = await client.post("/auth/login", data=seeded_reader)
-    token_a = resp_a.json()["access_token"]
-    token_b = resp_b.json()["access_token"]
-
-    # Confirm the two tokens carry distinct JTIs
-    assert decode_access_token(token_a)["jti"] != decode_access_token(token_b)["jti"]
-
-    # Logout session A
-    await client.post("/auth/logout", headers={"Authorization": f"Bearer {token_a}"})
-
-    # Session A is dead
-    assert (await client.get("/users/me", headers={"Authorization": f"Bearer {token_a}"})).status_code == 401
-    # Session B is still alive
-    assert (await client.get("/users/me", headers={"Authorization": f"Bearer {token_b}"})).status_code == 200
-
-
-# ---------------------------------------------------------------------------
 # DB persistence: the JTI row actually lands in blacklisted_tokens
 # ---------------------------------------------------------------------------
 

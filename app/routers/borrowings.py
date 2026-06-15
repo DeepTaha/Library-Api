@@ -3,7 +3,16 @@ import io
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+_CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _safe_csv(value: str) -> str:
+    # Prefix with a tab so spreadsheet apps treat the cell as text, not a formula.
+    if value and value[0] in _CSV_INJECTION_PREFIXES:
+        return "\t" + value
+    return value
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,12 +43,19 @@ async def borrow_book(
 
 # /me and /me/history must be declared before /{id} so FastAPI
 # doesn't attempt to coerce "me" into an integer borrowing id.
-@router.get("/me", response_model=list[schemas.BorrowingResponse])
+@router.get(
+    "/me",
+    response_model=list[schemas.BorrowingResponse],
+    summary="Get my active borrowings",
+    description=(
+        "Returns only **active (unreturned)** borrowings for the logged-in user. "
+        "To retrieve completed borrowings use **GET /borrowings/me/history**."
+    ),
+)
 async def get_my_borrowings(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_any_role),
 ):
-    """Active (unreturned) borrowings for the logged-in user."""
     service = LibraryService(db)
     return await service.get_my_borrowings(current_user.id)
 
@@ -75,8 +91,8 @@ async def export_my_borrowings(
                 buf = io.StringIO()
                 writer = csv.writer(buf)
                 writer.writerow([
-                    b.book.title,
-                    b.book.author,
+                    _safe_csv(b.book.title),
+                    _safe_csv(b.book.author),
                     b.borrowed_at.date().isoformat(),
                     b.due_date.date().isoformat(),
                     b.returned_at.date().isoformat() if b.returned_at else "",
@@ -91,12 +107,19 @@ async def export_my_borrowings(
     )
 
 
-@router.get("/me/history", response_model=list[schemas.BorrowingResponse])
+@router.get(
+    "/me/history",
+    response_model=list[schemas.BorrowingResponse],
+    summary="Get my borrowing history",
+    description=(
+        "Returns only **returned (completed)** borrowings for the logged-in user. "
+        "To retrieve currently active borrowings use **GET /borrowings/me**."
+    ),
+)
 async def get_my_history(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_any_role),
 ):
-    """Returned borrowings for the logged-in user."""
     service = LibraryService(db)
     return await service.get_my_history(current_user.id)
 
@@ -106,8 +129,8 @@ async def list_borrowings(
     user_id: Optional[int] = None,
     book_id: Optional[int] = None,
     active: Optional[bool] = None,
-    offset: int = 0,
-    limit: int = 10,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_librarian),
 ):

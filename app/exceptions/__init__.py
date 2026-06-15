@@ -6,7 +6,10 @@ from app.exceptions.library import (
     DuplicateActiveBorrowing,
     BookAlreadyReturned,
     AgeRestricted,
+    AgeVerificationRequired,
     AccountSuspended,
+    ExtensionLimitReached,
+    CannotExtendOverdue,
 )
 from app.exceptions.auth import (
     InvalidCredentials,
@@ -14,7 +17,10 @@ from app.exceptions.auth import (
     InsufficientPermissions,
     UserNotFound,
     UsernameAlreadyExists,
+    EmailAlreadyExists,
     InvalidResetToken,
+    CannotSelfModify,
+    LastAdminProtected,
 )
 
 __all__ = [
@@ -25,11 +31,17 @@ __all__ = [
     "DuplicateActiveBorrowing",
     "BookAlreadyReturned",
     "AgeRestricted",
+    "AgeVerificationRequired",
     "AccountSuspended",
+    "ExtensionLimitReached",
+    "CannotExtendOverdue",
     "InvalidCredentials",
     "InvalidToken",
     "InsufficientPermissions",
     "UserNotFound",
     "UsernameAlreadyExists",
+    "EmailAlreadyExists",
     "InvalidResetToken",
+    "CannotSelfModify",
+    "LastAdminProtected",
 ]

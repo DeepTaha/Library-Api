@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import case, extract, func
+from sqlalchemy import case, func
 from sqlalchemy.orm import selectinload, joinedload
 from app import models
 from datetime import datetime, timedelta, timezone
@@ -32,6 +32,7 @@ class BorrowingRepository:
             select(func.count(models.Borrowing.id))
             .where(models.Borrowing.user_id == user_id)
             .where(models.Borrowing.returned_at.is_(None))
+            .with_for_update()
         )
         return result.scalar_one()
 
@@ -41,6 +42,7 @@ class BorrowingRepository:
             .where(models.Borrowing.user_id == user_id)
             .where(models.Borrowing.book_id == book_id)
             .where(models.Borrowing.returned_at.is_(None))
+            .with_for_update()
         )
         return result.scalar_one_or_none()
 
@@ -175,22 +177,24 @@ class BorrowingRepository:
                         )
                     )
                 ).label("overdue_readers"),
-                func.avg(
-                    case(
-                        (
-                            models.Borrowing.returned_at.isnot(None),
-                            extract(
-                                "epoch",
-                                models.Borrowing.returned_at - models.Borrowing.borrowed_at,
-                            )
-                            / 86400.0,
-                        ),
-                        else_=None,
-                    )
-                ).label("avg_days_kept"),
             )
         )
         stats = stats_result.one()
+
+        # Average days kept — computed in Python to avoid DB-specific interval arithmetic.
+        durations_result = await self.db.execute(
+            select(models.Borrowing.borrowed_at, models.Borrowing.returned_at)
+            .where(models.Borrowing.returned_at.isnot(None))
+        )
+        durations = durations_result.all()
+        if durations:
+            total_seconds = sum(
+                (row.returned_at - row.borrowed_at).total_seconds()
+                for row in durations
+            )
+            avg_days_kept = round(total_seconds / len(durations) / 86400.0, 2)
+        else:
+            avg_days_kept = None
 
         # Top 5 most borrowed books of all time.
         top_books_result = await self.db.execute(
@@ -211,7 +215,7 @@ class BorrowingRepository:
             "borrowed_this_month": stats.this_month,
             "borrowed_last_month": stats.last_month,
             "readers_with_overdue": stats.overdue_readers,
-            "avg_days_kept": round(float(stats.avg_days_kept), 2) if stats.avg_days_kept is not None else None,
+            "avg_days_kept": avg_days_kept,
             "top_5_books": [
                 {
                     "book_id": row.id,

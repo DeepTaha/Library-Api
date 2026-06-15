@@ -1,5 +1,5 @@
 """User management endpoints — admin only."""
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -25,8 +25,8 @@ async def create_user(
 
 @router.get("/", response_model=list[schemas.UserResponse])
 async def list_users(
-    offset: int = 0,
-    limit: int = 10,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(10, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
@@ -63,7 +63,7 @@ async def update_user(
 ):
     """Update a user's username, role, or email. Admin only."""
     service = AuthService(db)
-    return await service.update_user(user_id, update_data)
+    return await service.update_user(user_id, update_data, acting_admin_id=current_user.id)
 
 
 @router.post("/{user_id}/reset-password", status_code=200)
@@ -87,4 +87,4 @@ async def delete_user(
 ):
     """Delete a user. Admin only."""
     service = AuthService(db)
-    await service.delete_user(user_id)
+    await service.delete_user(user_id, acting_admin_id=current_user.id)
