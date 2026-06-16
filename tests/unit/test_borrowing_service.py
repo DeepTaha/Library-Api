@@ -31,6 +31,8 @@ def _fake_borrowing(borrowing_id=1, user_id=1, returned=False):
     b.user_id = user_id
     b.due_date = datetime.now(timezone.utc) + timedelta(days=7)
     b.returned_at = datetime.now(timezone.utc) if returned else None
+    b.is_overdue = False
+    b.extension_count = 0
     return b
 
 

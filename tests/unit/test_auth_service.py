@@ -34,6 +34,7 @@ async def test_register_creates_user_with_reader_role():
         hashed_password=ANY,   # bcrypt hash — we don't know the exact value
         role=UserRole.READER,
         email=None,
+        date_of_birth=None,
     )
     assert result.role == UserRole.READER
 

@@ -8,7 +8,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://postgres:lmessi10@localhost:5432/library_test"
 os.environ["RATELIMIT_ENABLED"] = "0"  # disable rate limiting in the test suite
 
+import pytest
 import pytest_asyncio
+from contextlib import asynccontextmanager
+from unittest.mock import patch
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import text
@@ -160,3 +163,108 @@ async def seeded_user_id():
         await session.commit()
         await session.refresh(user)
         return user.id
+
+
+# ---------------------------------------------------------------------------
+# Report fixtures
+# ---------------------------------------------------------------------------
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def seeded_librarian():
+    """Creates a LIBRARIAN directly in the test DB and returns credentials + id."""
+    from app.models.user import User, UserRole
+    from app.security.password import hash_password
+
+    async with _test_session_factory() as session:
+        user = User(
+            username="testlibrarian",
+            hashed_password=hash_password("libpass123"),
+            role=UserRole.LIBRARIAN,
+            email="librarian@test.com",
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        uid = user.id
+    return {"username": "testlibrarian", "password": "libpass123", "id": uid}
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def librarian_headers(client, seeded_librarian):
+    """Returns Authorization headers for the seeded librarian user."""
+    resp = await client.post("/auth/login", data={
+        "username": seeded_librarian["username"],
+        "password": seeded_librarian["password"],
+    })
+    assert resp.status_code == 200
+    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+@pytest_asyncio.fixture(loop_scope="function")
+async def seeded_reader_with_borrowing():
+    """
+    Seeds: one reader (zaid), one book (1984), one returned+overdue borrowing.
+    Returns the reader's DB id.
+    """
+    from app.models.user import User, UserRole
+    from app.models.book import Book
+    from app.models.borrowing import Borrowing
+    from app.security.password import hash_password
+    from datetime import datetime, timezone, timedelta
+
+    async with _test_session_factory() as session:
+        reader = User(
+            username="zaid",
+            hashed_password=hash_password("zaidpass123"),
+            role=UserRole.READER,
+            email="zaid@test.com",
+        )
+        session.add(reader)
+        await session.flush()
+
+        book = Book(
+            title="1984",
+            author="George Orwell",
+            genre="Dystopian",
+            total_copies=5,
+            available_copies=4,
+            is_age_restricted=False,
+        )
+        session.add(book)
+        await session.flush()
+
+        now = datetime.now(timezone.utc)
+        borrowing = Borrowing(
+            user_id=reader.id,
+            book_id=book.id,
+            borrowed_at=now - timedelta(days=10),
+            due_date=now - timedelta(days=3),
+            returned_at=now - timedelta(days=1),
+            is_overdue=True,
+            extension_count=0,
+        )
+        session.add(borrowing)
+        await session.commit()
+        return reader.id
+
+
+@pytest.fixture()
+def make_session_local_patch():
+    """
+    Returns a no-arg callable that produces a fresh context-manager patch each
+    time it is called. Replaces app.routers.reports.SessionLocal with one backed
+    by the test session factory so _send_report_task never touches production.
+
+    Usage in tests:
+        with make_session_local_patch():
+            ...
+    """
+    @asynccontextmanager
+    async def _test_session_local():
+        async with _test_session_factory() as session:
+            yield session
+
+    def _factory():
+        return patch("app.routers.reports.SessionLocal", _test_session_local)
+
+    return _factory

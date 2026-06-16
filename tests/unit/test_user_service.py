@@ -37,7 +37,7 @@ async def test_update_user_changes_role():
     service.user_repo.get_by_id = AsyncMock(return_value=user)
     service.user_repo.get_by_username = AsyncMock(return_value=None)
 
-    result = await service.update_user(1, schemas.UserUpdate(role=UserRole.LIBRARIAN))
+    result = await service.update_user(1, schemas.UserUpdate(role=UserRole.LIBRARIAN), acting_admin_id=99)
 
     assert user.role == UserRole.LIBRARIAN
     service.db.commit.assert_called_once()
@@ -49,7 +49,7 @@ async def test_update_user_raises_when_not_found():
     service.user_repo.get_by_id = AsyncMock(return_value=None)
 
     with pytest.raises(UserNotFound):
-        await service.update_user(99, schemas.UserUpdate(role=UserRole.ADMIN))
+        await service.update_user(99, schemas.UserUpdate(role=UserRole.ADMIN), acting_admin_id=99)
 
 
 @pytest.mark.asyncio
@@ -62,7 +62,7 @@ async def test_update_user_raises_on_duplicate_username():
     service.user_repo.get_by_username = AsyncMock(return_value=other_user)
 
     with pytest.raises(UsernameAlreadyExists):
-        await service.update_user(1, schemas.UserUpdate(username="bob"))
+        await service.update_user(1, schemas.UserUpdate(username="bob"), acting_admin_id=99)
 
 
 # ---------------------------------------------------------------------------

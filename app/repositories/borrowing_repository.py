@@ -32,7 +32,6 @@ class BorrowingRepository:
             select(func.count(models.Borrowing.id))
             .where(models.Borrowing.user_id == user_id)
             .where(models.Borrowing.returned_at.is_(None))
-            .with_for_update()
         )
         return result.scalar_one()
 

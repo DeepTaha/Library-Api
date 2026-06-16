@@ -3,13 +3,11 @@ import pytest
 
 
 @pytest.mark.asyncio
-async def test_registered_email_returns_200_with_token(client, seeded_reader):
+async def test_registered_email_returns_200_with_message(client, seeded_reader):
     response = await client.post("/auth/forgot-password", json={"email": "testreader@test.com"})
 
     assert response.status_code == 200
-    body = response.json()
-    assert "reset link" in body["message"].lower()
-    assert body["reset_token"] is not None
+    assert "reset link" in response.json()["message"].lower()
 
 
 @pytest.mark.asyncio
@@ -17,9 +15,7 @@ async def test_unknown_email_returns_200_same_message(client):
     response = await client.post("/auth/forgot-password", json={"email": "nobody@test.com"})
 
     assert response.status_code == 200
-    body = response.json()
-    assert "reset link" in body["message"].lower()
-    assert body["reset_token"] is None  # no token — but same message as valid email
+    assert "reset link" in response.json()["message"].lower()
 
 
 @pytest.mark.asyncio
@@ -29,13 +25,17 @@ async def test_missing_email_field_returns_422(client):
 
 
 @pytest.mark.asyncio
-async def test_reset_token_is_stored_and_linked_to_user(client, seeded_reader):
+async def test_reset_token_is_stored_and_linked_to_user(client, seeded_reader, db_session):
     from app.security import reset_tokens
+    from app.models.password_reset_token import PasswordResetToken
+    from sqlalchemy import select
 
-    response = await client.post("/auth/forgot-password", json={"email": "testreader@test.com"})
-    token = response.json()["reset_token"]
+    await client.post("/auth/forgot-password", json={"email": "testreader@test.com"})
 
-    # Token resolves back to a user id — proving the store was populated
-    user_id = reset_tokens.get_user_id(token)
-    assert user_id is not None
-    assert isinstance(user_id, int)
+    result = await db_session.execute(select(PasswordResetToken))
+    entry = result.scalar_one_or_none()
+
+    assert entry is not None
+    assert isinstance(entry.user_id, int)
+    user_id = await reset_tokens.get_user_id(db_session, entry.token)
+    assert user_id == entry.user_id

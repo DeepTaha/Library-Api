@@ -35,7 +35,7 @@ async def test_get_book_by_id_raises_not_found():
     service.book_repo.get_by_id = AsyncMock(return_value=None)
 
     with pytest.raises(BookNotFound):
-        await service.get_book_by_id(99)
+        await service.get_book_by_id(99, current_user=MagicMock())
 
 
 @pytest.mark.asyncio
