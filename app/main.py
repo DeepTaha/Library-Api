@@ -6,7 +6,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app import models  # noqa: F401 — ensures models are registered on Base.metadata
-from app.routers import analytics, books, borrowings, admin, auth, users, reports
+from app.routers import analytics, books, borrowings, admin, auth, users, reports, fines, payments
 from app.scheduler import start_scheduler, stop_scheduler
 from app.security.rate_limit import limiter
 from app.services.library_service import MAX_EXTENSIONS
@@ -30,6 +30,13 @@ from app.exceptions import (
     InvalidResetToken,
     CannotSelfModify,
     LastAdminProtected,
+    FineNotFound,
+    FineAlreadyPaid,
+    FineNotBelongToUser,
+    PaymentNotFound,
+    InvalidPaymentCallback,
+    OutstandingFineExists,
+    SafepayAPIError,
 )
 
 
@@ -148,6 +155,43 @@ async def handle_last_admin_protected(request: Request, exc: LastAdminProtected)
     return JSONResponse(status_code=409, content={"detail": "Cannot remove or demote the last admin account"})
 
 
+@app.exception_handler(FineNotFound)
+async def handle_fine_not_found(request: Request, exc: FineNotFound):
+    return JSONResponse(status_code=404, content={"detail": "Fine not found"})
+
+
+@app.exception_handler(FineAlreadyPaid)
+async def handle_fine_already_paid(request: Request, exc: FineAlreadyPaid):
+    return JSONResponse(status_code=400, content={"detail": "This fine has already been paid or waived"})
+
+
+@app.exception_handler(FineNotBelongToUser)
+async def handle_fine_not_belong(request: Request, exc: FineNotBelongToUser):
+    return JSONResponse(status_code=403, content={"detail": "This fine does not belong to your account"})
+
+
+@app.exception_handler(PaymentNotFound)
+async def handle_payment_not_found(request: Request, exc: PaymentNotFound):
+    return JSONResponse(status_code=404, content={"detail": "Payment record not found"})
+
+
+@app.exception_handler(InvalidPaymentCallback)
+async def handle_invalid_callback(request: Request, exc: InvalidPaymentCallback):
+    return JSONResponse(status_code=400, content={"detail": "Invalid payment callback signature"})
+
+
+@app.exception_handler(OutstandingFineExists)
+async def handle_outstanding_fine(request: Request, exc: OutstandingFineExists):
+    return JSONResponse(status_code=400, content={"detail": "You have an outstanding fine. Please pay it before borrowing again."})
+
+
+@app.exception_handler(SafepayAPIError)
+async def handle_safepay_error(request: Request, exc: SafepayAPIError):
+    import logging
+    logging.getLogger("payment").error("SafepayAPIError: %s", exc.args)
+    return JSONResponse(status_code=502, content={"detail": "Payment gateway error.", "safepay_response": str(exc.args[0]) if exc.args else None})
+
+
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(books.router)
@@ -155,3 +199,5 @@ app.include_router(borrowings.router)
 app.include_router(admin.router)
 app.include_router(analytics.router)
 app.include_router(reports.router)
+app.include_router(fines.router)
+app.include_router(payments.router)

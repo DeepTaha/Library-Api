@@ -17,3 +17,4 @@ class Borrowing(Base):
 
     book = relationship("Book", back_populates="borrowings")
     user = relationship("User", back_populates="borrowings")
+    fine = relationship("Fine", back_populates="borrowing", uselist=False)

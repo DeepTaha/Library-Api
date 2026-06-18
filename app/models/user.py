@@ -33,5 +33,6 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
     )
 
-    # A user can have many borrowings
     borrowings = relationship("Borrowing", back_populates="user")
+    fines      = relationship("Fine", back_populates="user")
+    payments   = relationship("Payment", back_populates="user")

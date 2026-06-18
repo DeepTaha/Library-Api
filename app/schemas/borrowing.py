@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -17,9 +18,15 @@ class BorrowingResponse(BaseModel):
     borrowed_at: datetime | None
     due_date: datetime | None
     returned_at: datetime | None
+    fine: FineResponse | None = None  # populated if book was returned late
 
     class Config:
         from_attributes = True
+
+
+# Imported after BorrowingResponse to avoid circular import
+from app.schemas.fine import FineResponse  # noqa: E402
+BorrowingResponse.model_rebuild()
 
 
 class BulkReturnRequest(BaseModel):

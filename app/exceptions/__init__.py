@@ -22,6 +22,15 @@ from app.exceptions.auth import (
     CannotSelfModify,
     LastAdminProtected,
 )
+from app.exceptions.payment import (
+    FineNotFound,
+    FineAlreadyPaid,
+    FineNotBelongToUser,
+    PaymentNotFound,
+    InvalidPaymentCallback,
+    OutstandingFineExists,
+    SafepayAPIError,
+)
 
 __all__ = [
     "BookNotFound",
@@ -44,4 +53,11 @@ __all__ = [
     "InvalidResetToken",
     "CannotSelfModify",
     "LastAdminProtected",
+    "FineNotFound",
+    "FineAlreadyPaid",
+    "FineNotBelongToUser",
+    "PaymentNotFound",
+    "InvalidPaymentCallback",
+    "OutstandingFineExists",
+    "SafepayAPIError",
 ]

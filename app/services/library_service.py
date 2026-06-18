@@ -19,12 +19,14 @@ from app.exceptions import (
     AccountSuspended,
     ExtensionLimitReached,
     CannotExtendOverdue,
+    OutstandingFineExists,
 )
 from app.repositories.book_repository import BookRepository
 from app.repositories.borrowing_repository import BorrowingRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.fine_repository import FineRepository
 from app.models import User, UserRole
-from app import schemas
+from app import schemas, config
 
 _LOG_PATH = Path(__file__).resolve().parent.parent / "overdue.log"
 _overdue_handler = RotatingFileHandler(
@@ -80,6 +82,7 @@ class LibraryService:
         self.book_repo = BookRepository(db)
         self.borrow_repo = BorrowingRepository(db)
         self.user_repo = UserRepository(db)
+        self.fine_repo = FineRepository(db)
 
     async def add_book(self, book_data: schemas.BookCreate):
         book = await self.book_repo.create(book_data.model_dump())
@@ -168,6 +171,11 @@ class LibraryService:
         return borrowing
 
     async def borrow_book(self, request: schemas.BorrowRequest, current_user: User):
+        # Block borrowing if the user has any unpaid fines
+        outstanding = await self.fine_repo.get_pending_by_user(current_user.id)
+        if outstanding:
+            raise OutstandingFineExists()
+
         book = await self.book_repo.get_by_id_locked(request.book_id)
 
         if not book:
@@ -226,6 +234,27 @@ class LibraryService:
 
         await self.db.commit()
         await self.db.refresh(borrowing)
+
+        # If the book was returned late, create a fine (only if one doesn't already exist)
+        now = datetime.now(timezone.utc)
+        due = borrowing.due_date
+        if due and due.tzinfo is None:
+            due = due.replace(tzinfo=timezone.utc)
+
+        if due and now > due:
+            existing_fine = await self.fine_repo.get_by_borrowing_id(borrowing.id)
+            if not existing_fine:
+                days_overdue = (now - due).days or 1  # minimum 1 day if same-day late
+                fine = await self.fine_repo.create(
+                    borrowing_id=borrowing.id,
+                    user_id=borrowing.user_id,
+                    days_overdue=days_overdue,
+                    amount=days_overdue * config.FINE_RATE_PER_DAY,
+                )
+                await self.db.commit()
+                await self.db.refresh(fine)
+                borrowing.fine = fine  # attach to response so the caller sees it
+
         return borrowing
 
     async def bulk_return(
